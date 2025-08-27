@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: postgres_db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    volumes:
+      - ./backend/postgresql/schemas/db_1.sql:/docker-entrypoint-initdb.d/1-schema.sql:ro
+      - ./backend/postgresql/data/initial_data.sql:/docker-entrypoint-initdb.d/2-data.sql:ro
+    networks:
+      - backend-net
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    container_name: userver_app
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend-net
+    environment:
+      - DB_CONNECTION=postgresql://postgres:postgres@db:5432/postgres
+      - YANDEX_CLIENT_ID=${YANDEX_CLIENT_ID}
+      - YANDEX_CLIENT_SECRET=${YANDEX_CLIENT_SECRET}
+      - YANDEX_REDIRECT_URI=${YANDEX_REDIRECT_URI:-http://localhost:80/auth/yandex}
+      - APP_SCHEME=${APP_SCHEME:-mechanics-app}
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./frontend
+    container_name: vue_frontend
+    ports:
+      - "80:80"
+    networks:
+      - backend-net
+    depends_on:
+      - app
+
+networks:
+  backend-net:
+    driver: bridge
